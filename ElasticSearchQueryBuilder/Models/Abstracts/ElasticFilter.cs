@@ -3,18 +3,18 @@ using Newtonsoft.Json.Linq;
 
 namespace ElasticSearchQueryBuilder.Models.Abstracts
 {
-    internal abstract class ElasticFilter
+    public abstract class ElasticFilter
     {
         public Filter Specification { get; }
 
-        public bool IsMustAssert => new FilterOperator[]
+        public bool IsMandatory => new FilterOperator[]
         {
             FilterOperator.IsNot,
             FilterOperator.NotContains,
             FilterOperator.NotBetween,
-        }.Contains(Specification.Operator);
+        }.Contains(Specification.Operator) == false;
 
-        public abstract JObject Query { get; init; }
+        public abstract JObject Query { get; protected set; }
 
         public ElasticFilter(Filter specification)
         {

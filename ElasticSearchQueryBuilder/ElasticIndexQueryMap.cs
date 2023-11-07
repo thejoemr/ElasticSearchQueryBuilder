@@ -1,118 +1,93 @@
-﻿using ElasticSearchQueryBuilder.Enums;
-using ElasticSearchQueryBuilder.Models;
-using ElasticSearchQueryBuilder.Models.Abstracts;
-using Newtonsoft.Json.Linq;
+﻿using Newtonsoft.Json.Linq;
+using System.Collections;
+using System.Diagnostics.CodeAnalysis;
 
 namespace ElasticSearchQueryBuilder
 {
-    public class ElasticIndexQueryMap
+    public class ElasticIndexQueryMap : IReadOnlyDictionary<string, string>
     {
-        public IReadOnlyCollection<Filter> Filters { get; init; }
-        public bool EvaluateFiltersAsOr { get; init; }
-        public IReadOnlyDictionary<string, JObject> IndexQueryMap { get; init; }
+        public ElasticIndexFiltersMap Source { get; }
+        public IEnumerable<string> Keys => GetIndexQueryMap().Keys;
+        public IEnumerable<string> Values => GetIndexQueryMap().Values;
+        public int Count => GetIndexQueryMap().Count;
+        public string this[string key] => GetIndexQueryMap()[key];
 
-        public ElasticIndexQueryMap(IReadOnlyCollection<Filter> filters, bool evaluateFiltersAsOr = false)
+        public ElasticIndexQueryMap(ElasticIndexFiltersMap source)
         {
-            if (filters is null)
-                throw new ArgumentNullException(nameof(filters));
-
-            if (filters.Any() == false)
-                throw new ArgumentException($"{nameof(filters)} can't be empty");
-
-            Filters = filters;
-            EvaluateFiltersAsOr = evaluateFiltersAsOr;
-            IndexQueryMap = GetIndexQueryMap();
+            Source = source ?? throw new ArgumentNullException(nameof(source));
         }
 
-        private IReadOnlyDictionary<string, IEnumerable<ElasticFilter>> GetIndexFiltersMap()
+        IReadOnlyDictionary<string, string> GetIndexQueryMap()
         {
-            var output = new Dictionary<string, IEnumerable<ElasticFilter>>();
+            var output = new Dictionary<string, string>();
 
-            // Reduce the filters to use
-            var filters = Filters.GroupBy(spec => new
+            foreach (var indexFilters in Source)
             {
-                spec.IndexName,
-                spec.FieldName,
-                spec.Operator,
-                spec.Type,
-                spec.NestedOf,
-            }).Select(filterGroup => new Filter
-            {
-                IndexName = filterGroup.Key.IndexName,
-                FieldName = filterGroup.Key.FieldName,
-                NestedOf = filterGroup.Key.NestedOf,
-                Operator = filterGroup.Key.Operator,
-                Type = filterGroup.Key.Type,
-                Values = filterGroup.SelectMany(filter => filter.Values)
-            });
+                var mandatoryQueries = indexFilters.Value.Where(filter => filter.IsMandatory).Select(filter => filter.Query);
+                var notMandatoryQueries = indexFilters.Value.Where(filter => !filter.IsMandatory).Select(filter => filter.Query);
 
-            // Convert the filters to elastic filters
-            foreach (var filterGroup in filters.GroupBy(filter => filter.IndexName))
-            {
-                var elasticFilters = filterGroup.Select(filter =>
+                var query = new JObject
                 {
-                    ElasticFilter elasticFilter = filter.Type switch
+                    ["bool"] = new JObject
                     {
-                        FilterType.Text => new ElasticTextFilter(filter),
-                        FilterType.Number or FilterType.Date => new ElasticDataFilter(filter),
-                        _ => throw new NotSupportedException(),
-                    };
-
-                    return elasticFilter;
-                });
-
-                output[filterGroup.Key] = elasticFilters;
-            }
-
-            return output;
-        }
-
-        private IReadOnlyDictionary<string, JObject> GetIndexQueryMap()
-        {
-            var output = new Dictionary<string, JObject>();
-
-            foreach (var elasticFiltersMap in GetIndexFiltersMap())
-            {
-                var mustQueries = elasticFiltersMap.Value.Where(filter => filter.IsMustAssert)
-                                                         .Select(filter => filter.Query);
-                var mustNotQueries = elasticFiltersMap.Value.Where(filter => !filter.IsMustAssert)
-                                                            .Select(filter => filter.Query);
-
-                var query = new JObject()
-                {
-                    "bool", new JObject()
+                        ["must"] = new JArray(),
+                        ["should"] = new JArray(),
+                        ["must_not"] = new JArray(),
+                    }
                 };
 
-                if (EvaluateFiltersAsOr)
+                var boolQuery = query.Value<JObject>("bool");
+                if (mandatoryQueries.Any())
                 {
-                    if (mustQueries.Any())
-                        query.Value<JObject>("bool")?.Add("should", JArray.FromObject(mustQueries));
+                    if (Source.EvaluateAsOr)
+                    {
+                        var shouldQueries = boolQuery?.Value<JArray>("should");
+                        foreach (var mandatoryquery in mandatoryQueries)
+                            shouldQueries?.Add(mandatoryquery);
+                    }
+                    else
+                    {
+                        var mustQueries = boolQuery?.Value<JArray>("must");
+                        foreach (var mandatoryquery in mandatoryQueries)
+                            mustQueries?.Add(mandatoryquery);
+                    }
+                }
 
-                    if (mustNotQueries.Any())
-                        query.Value<JObject>("bool")?.Add("must_not", JArray.FromObject(new[]
+                if (notMandatoryQueries.Any())
+                {
+                    var mustNotQueries = boolQuery?.Value<JArray>("must_not");
+                    if (Source.EvaluateAsOr)
+                    {
+                        mustNotQueries?.Add(new JObject
                         {
-                            new JObject
+                            ["bool"] = new JObject
                             {
-                                "bool", new JObject
-                                {
-                                    "should", JArray.FromObject(mustNotQueries)
-                                }
+                                ["should"] = JArray.FromObject(notMandatoryQueries)
                             }
-                        }));
+                        });
+                    }
+                    else
+                    {
+                        foreach (var notMandatoryQuery in notMandatoryQueries)
+                            mustNotQueries?.Add(notMandatoryQuery);
+                    }
                 }
-                else
+
+                output[indexFilters.Key] = new JObject
                 {
-                    if (mustQueries.Any())
-                        query.Value<JObject>("bool")?.Add("must", JArray.FromObject(mustQueries));
-
-                    if (mustNotQueries.Any())
-                        query.Value<JObject>("bool")?.Add("must_not", JArray.FromObject(mustNotQueries));
-                }
-
-                output[elasticFiltersMap.Key] = query;
+                    ["bool"] = query
+                }.ToString();
             }
 
             return output;
         }
+
+        public bool ContainsKey(string key) => GetIndexQueryMap().ContainsKey(key);
+
+        public bool TryGetValue(string key, [MaybeNullWhen(false)] out string value) => GetIndexQueryMap().TryGetValue(key, out value);
+
+        public IEnumerator<KeyValuePair<string, string>> GetEnumerator() => GetIndexQueryMap().GetEnumerator();
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }

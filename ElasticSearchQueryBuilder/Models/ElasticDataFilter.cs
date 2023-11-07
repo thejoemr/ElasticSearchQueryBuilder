@@ -29,13 +29,10 @@ namespace ElasticSearchQueryBuilder.Models
             FilterOperator.GreaterThan
         }.Contains(Specification.Operator);
 
-        public override JObject Query { get; init; }
+        public override JObject Query { get; protected set; }
 
         private const string NUMBER_REGEX_PATTERN = @"[_]?^\d+[.]?\d*$";
-        private const string NUMBER_INTERVAL_REGEX_PATTERN = @$"^({NUMBER_REGEX_PATTERN})[;]({NUMBER_REGEX_PATTERN})$";
-
         private const string DATE_REGEX_PATTERN = @"^[_]?(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$";
-        private const string DATE_INTERVAL_REGEX_PATTERN = @$"^({DATE_REGEX_PATTERN})[;]({DATE_REGEX_PATTERN})$";
 
         public ElasticDataFilter(Filter specification) : base(specification)
         {
@@ -53,21 +50,7 @@ namespace ElasticSearchQueryBuilder.Models
             }.Contains(specification.Operator))
                 throw new ArgumentException($"The operator '{specification.Operator}' is not valid for DateTime filters");
 
-            if (IsBetween)
-            {
-                if (specification.Type == FilterType.Number && specification.Values.Any(value => !Regex.IsMatch(value, NUMBER_INTERVAL_REGEX_PATTERN)))
-                    throw new ArgumentException(@$"Some values doesn't match with the mask
-                                               '<lowlimit>;<upperlimit>' (1;10 => > 1 and < 10), 
-                                               and optionaly includes '_' at start of each value 
-                                               to indicate that the value will be included to evaluate (1;_10 => > 1 and <= 10)");
-
-                if (specification.Type == FilterType.Date && specification.Values.Any(value => !Regex.IsMatch(value, DATE_INTERVAL_REGEX_PATTERN)))
-                    throw new ArgumentException(@$"Some values doesn't match with the mask
-                                               '<lowlimit>;<upperlimit>' (1997-01-01;2010-01-01 => > 1997-01-01 and < 2010-01-01), 
-                                               and optionaly includes '_' at start of each value 
-                                               to indicate that the value will be included to evaluate (1997-01-01;_2010-01-01 => > > 1997-01-01 and <= 2010-01-01)");
-            }
-            else
+            if (!IsBetween)
             {
                 if (specification.Type == FilterType.Number && specification.Values.Any(value => !Regex.IsMatch(value, NUMBER_REGEX_PATTERN)))
                     throw new ArgumentException(@$"Some values doesn't match with the mask
@@ -79,18 +62,32 @@ namespace ElasticSearchQueryBuilder.Models
                                                each value must be a date of type 'yyyy-MM-dd' and optionaly includes '_' at start
                                                to indicate that the value will be included to evaluate");
             }
+            else
+            {
+                if (specification.Type == FilterType.Number && specification.Values.Any(value => !Regex.IsMatch(value, @$"^({NUMBER_REGEX_PATTERN})[;]({NUMBER_REGEX_PATTERN})$")))
+                    throw new ArgumentException(@$"Some values doesn't match with the mask
+                                               '<lowlimit>;<upperlimit>' (1;10 => > 1 and < 10), 
+                                               and optionaly includes '_' at start of each value 
+                                               to indicate that the value will be included to evaluate (1;_10 => > 1 and <= 10)");
+
+                if (specification.Type == FilterType.Date && specification.Values.Any(value => !Regex.IsMatch(value, @$"^({DATE_REGEX_PATTERN})[;]({DATE_REGEX_PATTERN})$")))
+                    throw new ArgumentException(@$"Some values doesn't match with the mask
+                                               '<lowlimit>;<upperlimit>' (1997-01-01;2010-01-01 => > 1997-01-01 and < 2010-01-01), 
+                                               and optionaly includes '_' at start of each value 
+                                               to indicate that the value will be included to evaluate (1997-01-01;_2010-01-01 => > > 1997-01-01 and <= 2010-01-01)");
+            }
 
             Query = GetQuery();
         }
 
         private IEnumerable<JObject> GetExactQuery() => Specification.Values.Select(value => new JObject()
         {
-            "range", new JObject
+            ["range"] = new JObject
             {
-                Specification.FieldName, new JObject
+                [Specification.FieldName] = new JObject
                 {
-                    value.StartsWith("_") ? "gte" : "gt", value.Replace("_", string.Empty).Trim(),
-                    value.StartsWith("_") ? "lte" : "lt", value.Replace("_", string.Empty).Trim()
+                    [value.StartsWith("_") ? "gte" : "gt"] = value.Replace("_", string.Empty).Trim(),
+                    [value.StartsWith("_") ? "lte" : "lt"] = value.Replace("_", string.Empty).Trim()
                 }
             }
         });
@@ -102,12 +99,12 @@ namespace ElasticSearchQueryBuilder.Models
 
             var query = new JObject()
             {
-                "range", new JObject
+                ["range"] = new JObject
                 {
-                    Specification.FieldName, new JObject
+                    [Specification.FieldName] = new JObject
                     {
-                        lowLimit.StartsWith("_") ? "gte" : "gt", lowLimit.Replace("_", string.Empty).Trim(),
-                        upperLimit.StartsWith("_") ? "lte" : "lt", upperLimit.Replace("_", string.Empty).Trim()
+                        [lowLimit.StartsWith("_") ? "gte" : "gt"] = lowLimit.Replace("_", string.Empty).Trim(),
+                        [upperLimit.StartsWith("_") ? "lte" : "lt"] = upperLimit.Replace("_", string.Empty).Trim()
                     }
                 }
             };
@@ -117,22 +114,22 @@ namespace ElasticSearchQueryBuilder.Models
 
         private IEnumerable<JObject> GetGreaterThanQuery() => Specification.Values.Select(value => new JObject
         {
-            "range", new JObject
+            ["range"] = new JObject
             {
-                Specification.FieldName, new JObject
+                [Specification.FieldName] = new JObject
                 {
-                    value.StartsWith("_") ? "gte" : "gt", value.Replace("_", string.Empty).Trim()
+                    [value.StartsWith("_") ? "gte" : "gt"] = value.Replace("_", string.Empty).Trim()
                 }
             }
         });
 
         private IEnumerable<JObject> GetLessThanQuery() => Specification.Values.Select(value => new JObject
         {
-            "range", new JObject
+            ["range"] = new JObject
             {
-                Specification.FieldName, new JObject
+                [Specification.FieldName] = new JObject
                 {
-                    value.StartsWith("_") ? "lte" : "lt", value.Replace("_", string.Empty).Trim()
+                    [value.StartsWith("_") ? "lte" : "lt"] = value.Replace("_", string.Empty).Trim()
                 }
             }
         });
@@ -152,11 +149,13 @@ namespace ElasticSearchQueryBuilder.Models
             else
                 throw new NotImplementedException($"Filter is not cofigured correctly");
 
-            return new JObject
+            return queries.Count() <= 1
+            ? queries.First()
+            : new JObject
             {
-                "bool", new JObject
+                ["bool"] = new JObject
                 {
-                    Specification.EvaluateValuesAsOr ? "should" : "must", JArray.FromObject(queries)
+                    ["should"] = JArray.FromObject(queries)
                 }
             };
         }

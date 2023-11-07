@@ -19,7 +19,7 @@ namespace ElasticSearchQueryBuilder.Models
             FilterOperator.NotContains
         }.Contains(Specification.Operator);
 
-        public override JObject Query { get; init; }
+        public override JObject Query { get; protected set; }
 
         public ElasticTextFilter(Filter specification) : base(specification)
         {
@@ -43,29 +43,29 @@ namespace ElasticSearchQueryBuilder.Models
 
         private IEnumerable<JObject> GetMatchQuery() => Specification.Values.Select(value => new JObject
         {
-            "match", new JObject
+            ["match"] = new JObject
             {
-                Specification.FieldName, value
+                [Specification.FieldName] = value
             }
         });
 
         private IEnumerable<JObject> GetWildcardQuery() => Specification.Values.Select(value =>
         {
             var tokens = Regex.Split(value ?? string.Empty, "[\\s]") // Split by white space to get all words
-                            .Where(word => !string.IsNullOrEmpty(word) && Regex.IsMatch(word, "[\\s]")) // Get all not null, empty or words with only spaces
-                            .SelectMany(word => Regex.Split(word, "[^\\w]")) // Get all the alphanumeric sub words (tokens)
-                            .Where(token => !string.IsNullOrEmpty(token) && Regex.IsMatch(token, "[\\s]")) // Get all not null, empty or words with only spaces
-                            .Select(token => $"*{token.ToLowerInvariant()}*");
+                              .Where(word => !string.IsNullOrEmpty(word) && Regex.IsMatch(word, "[\\s]")) // Get all not null, empty or words with only spaces
+                              .SelectMany(word => Regex.Split(word, "[^\\w]")) // Get all the alphanumeric sub words (tokens)
+                              .Where(token => !string.IsNullOrEmpty(token) && Regex.IsMatch(token, "[\\s]")) // Get all not null, empty or words with only spaces
+                              .Select(token => $"*{token.ToLowerInvariant()}*");
 
             return new JObject
             {
-                "bool", new JObject
+                ["bool"] = new JObject
                 {
-                    "must", JArray.FromObject(tokens.Select(token => new JObject
+                    ["must"] = JArray.FromObject(tokens.Select(token => new JObject
                     {
-                        "wildcard", new JObject
+                        ["wildcard"] = new JObject
                         {
-                            Specification.FieldName, token
+                            [Specification.FieldName] = token
                         }
                     }))
                 }
@@ -83,11 +83,13 @@ namespace ElasticSearchQueryBuilder.Models
             else
                 throw new NotImplementedException($"Specification filter is not cofigured correctly");
 
-            return new JObject
+            return queries.Count() <= 1
+            ? queries.First()
+            : new JObject
             {
-                "bool", new JObject
+                ["bool"] = new JObject
                 {
-                    Specification.EvaluateValuesAsOr ? "should" : "must", JArray.FromObject(queries)
+                    ["should"] = JArray.FromObject(queries)
                 }
             };
         }

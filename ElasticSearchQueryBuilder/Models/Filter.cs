@@ -9,6 +9,5 @@ public class Filter
     public string? NestedOf { get; set; }
     public FilterOperator Operator { get; set; }
     public FilterType Type { get; set; }
-    public IEnumerable<string> Values { get; set; } = null!;
-    public bool EvaluateValuesAsOr { get; set; } = true;
+    public IEnumerable<string> Values { get; set; } = Enumerable.Empty<string>();
 }
