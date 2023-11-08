@@ -3,9 +3,9 @@ using Newtonsoft.Json.Linq;
 
 namespace ElasticSearchQueryBuilder.Models.Abstracts
 {
-    public abstract class ElasticFilter
+    public abstract class Filter
     {
-        public Filter Specification { get; }
+        public FilterSpecification Specification { get; }
 
         public bool IsMandatory => new FilterOperator[]
         {
@@ -16,7 +16,7 @@ namespace ElasticSearchQueryBuilder.Models.Abstracts
 
         public abstract JObject Query { get; protected set; }
 
-        public ElasticFilter(Filter specification)
+        public Filter(FilterSpecification specification)
         {
             if (string.IsNullOrEmpty(specification.IndexName))
                 throw new ArgumentException($"'{nameof(specification.IndexName)}' can't be null or empty.", nameof(specification.IndexName));

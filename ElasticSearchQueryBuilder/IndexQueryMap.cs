@@ -4,24 +4,27 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace ElasticSearchQueryBuilder
 {
-    public class ElasticIndexQueryMap : IReadOnlyDictionary<string, string>
+    public class IndexQueryMap : IReadOnlyDictionary<string, string>
     {
-        public ElasticIndexFiltersMap Source { get; }
+        readonly IndexFiltersMap _filtersMap;
+        readonly bool _evaluateFiltersAsOr;
+
         public IEnumerable<string> Keys => GetIndexQueryMap().Keys;
         public IEnumerable<string> Values => GetIndexQueryMap().Values;
         public int Count => GetIndexQueryMap().Count;
         public string this[string key] => GetIndexQueryMap()[key];
 
-        public ElasticIndexQueryMap(ElasticIndexFiltersMap source)
+        public IndexQueryMap(IndexFiltersMap filtersMap, bool evaluateFiltersAsOr = false)
         {
-            Source = source ?? throw new ArgumentNullException(nameof(source));
+            _filtersMap = filtersMap ?? throw new ArgumentNullException(nameof(filtersMap));
+            _evaluateFiltersAsOr = evaluateFiltersAsOr;
         }
 
         IReadOnlyDictionary<string, string> GetIndexQueryMap()
         {
             var output = new Dictionary<string, string>();
 
-            foreach (var indexFilters in Source)
+            foreach (var indexFilters in _filtersMap)
             {
                 var mandatoryQueries = indexFilters.Value.Where(filter => filter.IsMandatory).Select(filter => filter.Query);
                 var notMandatoryQueries = indexFilters.Value.Where(filter => !filter.IsMandatory).Select(filter => filter.Query);
@@ -39,7 +42,7 @@ namespace ElasticSearchQueryBuilder
                 var boolQuery = query.Value<JObject>("bool");
                 if (mandatoryQueries.Any())
                 {
-                    if (Source.EvaluateAsOr)
+                    if (_evaluateFiltersAsOr)
                     {
                         var shouldQueries = boolQuery?.Value<JArray>("should");
                         foreach (var mandatoryquery in mandatoryQueries)
@@ -56,7 +59,7 @@ namespace ElasticSearchQueryBuilder
                 if (notMandatoryQueries.Any())
                 {
                     var mustNotQueries = boolQuery?.Value<JArray>("must_not");
-                    if (Source.EvaluateAsOr)
+                    if (_evaluateFiltersAsOr)
                     {
                         mustNotQueries?.Add(new JObject
                         {

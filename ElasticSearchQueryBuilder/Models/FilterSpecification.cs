@@ -2,7 +2,7 @@
 
 namespace ElasticSearchQueryBuilder.Models;
 
-public class Filter
+public class FilterSpecification
 {
     public string IndexName { get; set; } = null!;
     public string FieldName { get; set; } = null!;

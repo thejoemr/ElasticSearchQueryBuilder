@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 
 namespace ElasticSearchQueryBuilder.Models
 {
-    internal class ElasticTextFilter : ElasticFilter
+    internal class TextFilter : Filter
     {
         private bool IsMatch => new FilterOperator[]
         {
@@ -21,7 +21,7 @@ namespace ElasticSearchQueryBuilder.Models
 
         public override JObject Query { get; protected set; }
 
-        public ElasticTextFilter(Filter specification) : base(specification)
+        public TextFilter(FilterSpecification specification) : base(specification)
         {
             if (!new FilterType[]
             {

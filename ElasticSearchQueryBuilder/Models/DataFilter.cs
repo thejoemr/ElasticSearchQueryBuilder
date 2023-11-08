@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 
 namespace ElasticSearchQueryBuilder.Models
 {
-    internal class ElasticDataFilter : ElasticFilter
+    internal class DataFilter : Filter
     {
         private bool IsExact => new FilterOperator[]
         {
@@ -34,7 +34,7 @@ namespace ElasticSearchQueryBuilder.Models
         private const string NUMBER_REGEX_PATTERN = @"[_]?^\d+[.]?\d*$";
         private const string DATE_REGEX_PATTERN = @"^[_]?(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$";
 
-        public ElasticDataFilter(Filter specification) : base(specification)
+        public DataFilter(FilterSpecification specification) : base(specification)
         {
             if (!new FilterType[]
             {
