@@ -1,6 +1,6 @@
 ﻿using ElasticSearchQueryBuilder.Enums;
 
-namespace ElasticSearchQueryBuilder.Models;
+namespace ElasticSearchQueryBuilder;
 
 public class FilterSpecification
 {
