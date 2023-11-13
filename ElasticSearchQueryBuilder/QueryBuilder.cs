@@ -5,15 +5,15 @@ namespace ElasticSearchQueryBuilder
 {
     public class QueryBuilder
     {
-        readonly IReadOnlyCollection<QueryItem> _queryItems;
-        readonly string _indexname;
+        readonly ICollection<QueryItem> _queryItems;
+        readonly string _indexName;
 
         public QueryBuilder(string indexName)
         {
             if (string.IsNullOrEmpty(indexName))
                 throw new ArgumentException($"'{nameof(indexName)}' can't be null or empty.", nameof(indexName));
 
-            _indexname = indexName;
+            _indexName = indexName;
             _queryItems = new List<QueryItem>();
         }
 
@@ -21,16 +21,31 @@ namespace ElasticSearchQueryBuilder
         {
             if (queryMap == null)
                 throw new ArgumentNullException(nameof(queryMap));
-            else if (!queryMap.ContainsKey(_indexname))
-                throw new ArgumentException($"'{nameof(queryMap)}' not contains query for '{_indexname}'", nameof(queryMap));
+            else if (!queryMap.ContainsKey(_indexName))
+                throw new ArgumentException($"'{nameof(queryMap)}' not contains query for '{_indexName}'", nameof(queryMap));
 
-            _queryItems.Append(new QueryItem(queryMap[_indexname], isMandatory));
+            _queryItems.Append(new QueryItem(queryMap[_indexName], isMandatory));
         }
 
-        public string GetQueryForAggregationByField(string aggName,
-                                                    string fieldName,
-                                                    string fieldKey,
-                                                    int size = 1000)
+        public string BuildBoolQuery()
+        {
+            var mustQueries = _queryItems.Where(qItem => qItem.IsMandatory).SelectMany(GetMustQueriesOrDefault);
+            var shouldQueries = _queryItems.Where(qItem => !qItem.IsMandatory).SelectMany(GetShouldQueriesOrDefault);
+
+            return new JObject
+            {
+                ["bool"] = new JObject
+                {
+                    ["must"] = JArray.FromObject(mustQueries),
+                    ["should"] = JArray.FromObject(shouldQueries),
+                }
+            }.ToString();
+        }
+
+        public string BuildAsAggregationByFieldQuery(string aggName,
+                                                     string fieldName,
+                                                     string fieldKey,
+                                                     int size = 1000)
         {
             if (string.IsNullOrEmpty(aggName))
                 throw new ArgumentException($"'{nameof(aggName)}' can't be null or empty.", nameof(aggName));
@@ -41,20 +56,10 @@ namespace ElasticSearchQueryBuilder
             if (string.IsNullOrEmpty(fieldKey))
                 throw new ArgumentException($"'{nameof(fieldKey)}' can't be null or empty.", nameof(fieldKey));
 
-            var mustQueries = _queryItems.Where(qItem => qItem.IsMandatory).SelectMany(GetMustQueriesOrDefault);
-            var shouldQueries = _queryItems.Where(qItem => !qItem.IsMandatory).SelectMany(GetShouldQueriesOrDefault);
-
             var output = new JObject
             {
                 ["size"] = 0, // Uses 0 because we don't need the documents of the index, only the buckets
-                ["query"] = new JObject
-                {
-                    ["bool"] = new JObject
-                    {
-                        ["must"] = JArray.FromObject(mustQueries),
-                        ["should"] = JArray.FromObject(shouldQueries),
-                    }
-                },
+                ["query"] = JObject.Parse(BuildBoolQuery()),
                 ["aggs"] = new JObject
                 {
                     [aggName] = new JObject
@@ -83,25 +88,15 @@ namespace ElasticSearchQueryBuilder
             return output;
         }
 
-        public string GetQueryForSearch(int page,
-                                        int size,
-                                        params (string fieldName, string order)[] orderBy)
+        public string BuildAsSearchQuery(int page,
+                                         int size,
+                                         params (string fieldName, string order)[] orderBy)
         {
-            var mustQueries = _queryItems.Where(qItem => qItem.IsMandatory).SelectMany(GetMustQueriesOrDefault);
-            var shouldQueries = _queryItems.Where(qItem => !qItem.IsMandatory).SelectMany(GetShouldQueriesOrDefault);
-
             var output = new JObject
             {
                 ["from"] = page * size,
                 ["size"] = size,
-                ["query"] = new JObject
-                {
-                    ["bool"] = new JObject
-                    {
-                        ["must"] = JArray.FromObject(mustQueries),
-                        ["should"] = JArray.FromObject(shouldQueries),
-                    }
-                },
+                ["query"] = JObject.Parse(BuildBoolQuery()),
                 ["sort"] = JArray.FromObject(orderBy.Select(condition => new JObject
                 {
                     [condition.fieldName] = condition.order
@@ -111,32 +106,32 @@ namespace ElasticSearchQueryBuilder
             return output;
         }
 
-        static IEnumerable<string> GetMustQueriesOrDefault(QueryItem queryItem)
+        static IEnumerable<JObject> GetMustQueriesOrDefault(QueryItem queryItem)
         {
             var mustQueries = JObject.Parse(queryItem.JsonQuery).SelectToken("bool.must");
 
             if (mustQueries == null)
-                yield return queryItem.JsonQuery;
+                yield return JObject.Parse(queryItem.JsonQuery);
             else
             {
                 foreach (var subQuery in mustQueries?.Children<JObject>() ?? Enumerable.Empty<JObject>())
-                    yield return subQuery.ToString();
+                    yield return subQuery;
             }
         }
 
-        static IEnumerable<string> GetShouldQueriesOrDefault(QueryItem queryItem)
+        static IEnumerable<JObject> GetShouldQueriesOrDefault(QueryItem queryItem)
         {
             var shouldQueries = JObject.Parse(queryItem.JsonQuery).SelectToken("bool.should");
 
             if (shouldQueries == null)
             {
-                foreach (var subQuery in GetMustQueriesOrDefault(queryItem))
-                    yield return subQuery.ToString();
+                foreach (var query in GetMustQueriesOrDefault(queryItem))
+                    yield return query;
             }
             else
             {
-                foreach (var subQuery in shouldQueries?.Children<JObject>() ?? Enumerable.Empty<JObject>())
-                    yield return subQuery.ToString();
+                foreach (var query in shouldQueries?.Children<JObject>() ?? Enumerable.Empty<JObject>())
+                    yield return query;
             }
         }
 

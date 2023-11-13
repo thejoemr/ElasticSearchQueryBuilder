@@ -76,10 +76,7 @@ namespace ElasticSearchQueryBuilder
                     }
                 }
 
-                output[indexFilters.Key] = new JObject
-                {
-                    ["bool"] = query
-                }.ToString();
+                output[indexFilters.Key] = query.ToString();
             }
 
             return output;
